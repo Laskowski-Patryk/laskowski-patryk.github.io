@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Number Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        input, button {
+            margin: 10px 0;
+            padding: 5px;
+        }
+        #result {
+            font-weight: bold;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Random Number Generator</h2>
+        <img id="sourceImage" src="/api/placeholder/400/300" alt="Source Image" style="max-width: 100%;">
+        <br>
+        <label for="minInput">Minimum:</label>
+        <input type="number" id="minInput" value="1">
+        <br>
+        <label for="maxInput">Maximum:</label>
+        <input type="number" id="maxInput" value="100">
+        <br>
+        <button onclick="generateRandomNumber()">Generate Random Number</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        function generateRandomNumber() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = document.getElementById('sourceImage');
+            
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0, img.width, img.height);
+            
+            const x = Math.floor(img.width / 2);
+            const y = Math.floor(img.height / 2);
+            const pixelData = ctx.getImageData(x, y, 1, 1).data;
+            
+            const hexValue = rgbToHex(pixelData[0], pixelData[1], pixelData[2]);
+            const seed = parseInt(hexValue, 16);
+            
+            const min = parseInt(document.getElementById('minInput').value);
+            const max = parseInt(document.getElementById('maxInput').value);
+            
+            const randomNumber = (seed % (max - min + 1)) + min;
+            
+            document.getElementById('result').textContent = `Random Number: ${randomNumber}`;
+        }
+
+        function rgbToHex(r, g, b) {
+            return ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        }
+    </script>
+</body>
+</html>
