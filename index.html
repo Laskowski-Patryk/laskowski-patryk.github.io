@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Random Number Generator</title>
+    <title>Image-Based Random Number Generator</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -19,8 +19,7 @@
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            max-width: 400px;
-            width: 100%;
+            text-align: center;
         }
         input, button {
             margin: 10px 0;
@@ -31,16 +30,16 @@
             margin-top: 20px;
         }
         #sourceImage {
-            max-width: 100%;
-            height: auto;
+            max-width: 300px;
+            max-height: 300px;
             margin-bottom: 10px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>Random Number Generator</h2>
-        <img id="sourceImage" src="https://thispersondoesnotexist.com" alt="AI Generated Person" crossorigin="anonymous">
+        <h2>Image-Based Random Number Generator</h2>
+        <img id="sourceImage" src="https://thispersondoesnotexist.com/" alt="Random face" crossorigin="anonymous">
         <br>
         <label for="minInput">Minimum:</label>
         <input type="number" id="minInput" value="1">
@@ -51,28 +50,40 @@
         <button onclick="generateRandomNumber()">Generate Random Number</button>
         <div id="result"></div>
     </div>
-
     <script>
         function generateRandomNumber() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = document.getElementById('sourceImage');
+            
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0, img.width, img.height);
+            
+            const x = Math.floor(img.width / 2);
+            const y = Math.floor(img.height / 2);
+            const pixelData = ctx.getImageData(x, y, 1, 1).data;
+            
+            const pixelValue = pixelData[0] + pixelData[1] + pixelData[2];
+            
             const min = parseInt(document.getElementById('minInput').value);
             const max = parseInt(document.getElementById('maxInput').value);
             
-            // Using current timestamp as a seed
-            const seed = Date.now();
-            const randomNumber = (seed % (max - min + 1)) + min;
+            const randomNumber = (pixelValue % (max - min + 1)) + min;
             
             document.getElementById('result').textContent = `Random Number: ${randomNumber}`;
+            
+            // Load a new image
+            loadNewImage();
         }
 
-        // Refresh the image every 5 seconds
-        function refreshImage() {
+        function loadNewImage() {
             const img = document.getElementById('sourceImage');
-            img.src = 'https://thispersondoesnotexist.com?' + new Date().getTime();
+            img.src = 'https://thispersondoesnotexist.com/';
         }
 
-        // Initial refresh and set interval
-        refreshImage();
-        setInterval(refreshImage, 5000);
+        // Initial image load
+        window.onload = loadNewImage;
     </script>
 </body>
 </html>
