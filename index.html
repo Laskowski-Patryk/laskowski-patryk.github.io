@@ -156,6 +156,10 @@
         #currentCoordinate {
             border-color: #e74c3c;
         }
+     #nextStepButton {
+            display: none;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -172,6 +176,7 @@
         </div>
         <button id="generateButton">Generate Random Number</button>
         <button id="generateNewImage">Generate New Image</button>
+        <button id="nextStepButton">Next Step</button>
         <p id="randomNumber"><strong>Generated Number:</strong> <span id="generatedValue">-</span></p>
         <div id="animationContainer">
             <div id="hexStep" class="step"></div>
@@ -201,15 +206,17 @@
         let ctx;
         let isFirstGeneration = true;
         let currentActiveArrow = null;
-
+        let currentStep = 0;
+        let hexColor, randomNumber, range, minRange;
 
         window.onload = function() {
             const canvas = document.getElementById('imageCanvas');
             ctx = canvas.getContext('2d');
             loadNewImage();
 
-            document.getElementById('generateButton').onclick = generateNumber;
+            document.getElementById('generateButton').onclick = startGeneration;
             document.getElementById('generateNewImage').onclick = loadNewImage;
+            document.getElementById('nextStepButton').onclick = nextStep;
             updateCoordinateMarkers();
         };
 
@@ -235,22 +242,50 @@
             }, 50);
         }
 
-        function generateNumber() {
+        function startGeneration() {
             if (!isFirstGeneration) {
                 resetView();
             }
             isFirstGeneration = false;
 
             const pixelData = ctx.getImageData(lastX, lastY, 1, 1).data;
-            const hexColor = rgbToHex(pixelData[0], pixelData[1], pixelData[2]);
-            const minRange = parseInt(document.getElementById('minRange').value);
-            const maxRange = parseInt(document.getElementById('maxRange').value);
-            const range = maxRange - minRange + 1;
-            const randomNumber = (parseInt(hexColor, 16) % range) + minRange;
+            hexColor = rgbToHex(pixelData[0], pixelData[1], pixelData[2]);
+            minRange = parseInt(document.getElementById('minRange').value);
+            maxRange = parseInt(document.getElementById('maxRange').value);
+            range = maxRange - minRange + 1;
+            randomNumber = (parseInt(hexColor, 16) % range) + minRange;
 
-            animateProcess(hexColor, randomNumber, range, minRange);
+            currentStep = 0;
+            document.getElementById('nextStepButton').style.display = 'inline-block';
+            nextStep();
         }
-function animateProcess(hexColor, randomNumber, range, minRange) {
+
+        function nextStep() {
+            switch(currentStep) {
+                case 0:
+                    animatePixel();
+                    break;
+                case 1:
+                    animateStep('hexStep', `Hex: #${hexColor}`, 'arrow1');
+                    break;
+                case 2:
+                    animateStep('decimalStep', `Decimal: ${parseInt(hexColor, 16)}`, 'arrow2');
+                    break;
+                case 3:
+                    animateStep('moduloStep', `Modulo ${range} + ${minRange}: ${randomNumber}`, 'arrow3');
+                    break;
+                case 4:
+                    showFinalNumber();
+                    break;
+                case 5:
+                    showNewCoordinates();
+                    document.getElementById('nextStepButton').style.display = 'none';
+                    break;
+            }
+            currentStep++;
+        }
+
+        function animatePixel() {
             const pixel = document.getElementById('pixel');
             pixel.style.left = `${lastX}px`;
             pixel.style.top = `${lastY}px`;
@@ -261,39 +296,33 @@ function animateProcess(hexColor, randomNumber, range, minRange) {
                 pixel.style.width = '100px';
                 pixel.style.height = '100px';
             }, 100);
-
-            animateStep('hexStep', `Hex: #${hexColor}`, 1500, 'arrow1');
-            animateStep('decimalStep', `Decimal: ${parseInt(hexColor, 16)}`, 3000, 'arrow2');
-            animateStep('moduloStep', `Modulo ${range} + ${minRange}: ${randomNumber}`, 4000, 'arrow3');
-
-            setTimeout(() => {
-                document.getElementById('generatedValue').textContent = randomNumber;
-                document.getElementById('randomNumber').style.transform = 'scale(1.1)';
-                setTimeout(() => {
-                    document.getElementById('randomNumber').style.transform = 'scale(1)';
-                }, 300);
-            }, 4000);
-
-            setTimeout(() => {
-                nextCoordinates(hexColor);
-                animateStep('newCoordsStep', `New coordinates: (${lastX}, ${lastY})`, 0);
-                updateCoordinateMarkers();
-                stopArrowAnimations();
-            }, 5000);
         }
 
-        function animateStep(elementId, text, delay, arrowId) {
+        function animateStep(elementId, text, arrowId) {
+            const element = document.getElementById(elementId);
+            element.textContent = text;
+            element.style.opacity = 0;
+            element.style.transform = 'translateY(20px)';
             setTimeout(() => {
-                const element = document.getElementById(elementId);
-                element.textContent = text;
-                element.style.opacity = 0;
-                element.style.transform = 'translateY(20px)';
-                setTimeout(() => {
-                    element.style.opacity = 1;
-                    element.style.transform = 'translateY(0)';
-                    activateArrow(arrowId);
-                }, 50);
-            }, delay);
+                element.style.opacity = 1;
+                element.style.transform = 'translateY(0)';
+                activateArrow(arrowId);
+            }, 50);
+        }
+
+        function showFinalNumber() {
+            document.getElementById('generatedValue').textContent = randomNumber;
+            document.getElementById('randomNumber').style.transform = 'scale(1.1)';
+            setTimeout(() => {
+                document.getElementById('randomNumber').style.transform = 'scale(1)';
+            }, 300);
+        }
+
+        function showNewCoordinates() {
+            nextCoordinates(hexColor);
+            animateStep('newCoordsStep', `New coordinates: (${lastX}, ${lastY})`, null);
+            updateCoordinateMarkers();
+            stopArrowAnimations();
         }
 
         function activateArrow(arrowId) {
@@ -330,6 +359,7 @@ function animateProcess(hexColor, randomNumber, range, minRange) {
             });
 
             stopArrowAnimations();
+            document.getElementById('nextStepButton').style.display = 'none';
         }
 
         function rgbToHex(r, g, b) {
