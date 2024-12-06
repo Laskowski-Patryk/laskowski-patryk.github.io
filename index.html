@@ -22,7 +22,7 @@
         }
         button {
             padding: 10px 20px;
-            margin: 0 10px;
+            margin: 0 5px;
             font-size: 16px;
             cursor: pointer;
         }
@@ -38,6 +38,10 @@
             fill: red;
             stroke: black;
             stroke-width: 1px;
+            cursor: pointer; /* Indicate that points are clickable */
+        }
+        .point.selected {
+            fill: yellow; /* Highlight selected points */
         }
         .mst-edge {
             stroke: gray;
@@ -45,12 +49,32 @@
         }
         .considered-edge {
             stroke: orange;
-            stroke: 2px;
+            stroke-width: 2px;
             stroke-dasharray: 5,5;
         }
         .tsp-edge {
             stroke: blue;
             stroke-width: 2px;
+        }
+        .distance-line {
+            stroke: green;
+            stroke-width: 2px;
+            stroke-dasharray: 4,2;
+        }
+        .distance-label {
+            font-size: 12px;
+            fill: green;
+            background: white;
+        }
+        .selection-line {
+            stroke: purple;
+            stroke-width: 2px;
+            stroke-dasharray: 2,2;
+        }
+        .selection-label {
+            font-size: 12px;
+            fill: purple;
+            background: white;
         }
         .label {
             font-size: 12px;
@@ -59,24 +83,37 @@
         .legend {
             font-size: 14px;
         }
+        .distance-display {
+            font-size: 14px;
+            fill: black;
+        }
+        /* Style for the axes */
+        .axis path,
+        .axis line {
+            stroke: black;
+        }
+        .axis text {
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
     <div id="container">
         <h2>2-Approximation TSP Algorithm (MST + Preorder)</h2>
-        <svg id="svgCanvas" width="600" height="600"></svg>
+        <svg id="svgCanvas" width="700" height="700"></svg> <!-- Increased width to accommodate axes -->
         <div id="buttons">
             <button id="addMST">Add MST Edge</button>
             <button id="addTSP">Add TSP Edge</button>
             <button id="reset">Reset</button>
+            <button id="resetSelection">Reset Selection</button> <!-- New Button -->
         </div>
     </div>
 
     <script>
         // Configuration
-        const width = 600;
-        const height = 600;
-        const padding = 50;
+        const width = 700; // Increased width to accommodate axes
+        const height = 700; // Increased height to accommodate axes
+        const padding = 60; // Increased padding for axes
         const nPoints = 10;
         const minDistance = 0.1;
         const maxAttempts = 10000;
@@ -88,7 +125,7 @@
         let mstSteps = [];
         let mstStepIndex = 0;
         let consideredEdges = [];
-                let adjList = [];
+        let adjList = [];
         let preorderOrder = [];
         let tour = [];
         let tspStepIndex = 0;
@@ -97,20 +134,78 @@
         let labels = [];
         let legendAdded = false;
 
+        // New State Variables for Distance Calculation
+        let selectedPoints = [];
+        let distanceText = null;
+        let distanceLine = null;
+        let distanceLabel = null;
+
+        // New State Variables for Multiple Selections
+        let selectionLines = [];
+        let selectionLabels = [];
+        let cumulativeCost = 0;
+
         // Create SVG Canvas
         const svg = d3.select("#svgCanvas")
                       .attr("width", width)
                       .attr("height", height);
 
-        // Create a group for edges and points
+        // Define Scales
+        const xScale = d3.scaleLinear()
+                         .domain([0, 1])
+                         .range([padding, width - padding]);
+
+        const yScale = d3.scaleLinear()
+                         .domain([0, 1])
+                         .range([height - padding, padding]); // Inverted to have (0,0) at bottom-left
+
+        // Create Axes
+        const xAxis = d3.axisBottom(xScale)
+                        .ticks(10)
+                        .tickFormat(d3.format(".1f"));
+
+        const yAxis = d3.axisLeft(yScale)
+                        .ticks(10)
+                        .tickFormat(d3.format(".1f"));
+
+        // Append Axes to SVG
+        svg.append("g")
+           .attr("class", "axis")
+           .attr("transform", `translate(0, ${height - padding})`)
+           .call(xAxis);
+
+        svg.append("g")
+           .attr("class", "axis")
+           .attr("transform", `translate(${padding}, 0)`)
+           .call(yAxis);
+
+        // Label Axes
+        svg.append("text")
+           .attr("x", width / 2)
+           .attr("y", height - padding + 40)
+           .attr("text-anchor", "middle")
+           .attr("font-size", "14px")
+           .text("X Scale");
+
+        svg.append("text")
+           .attr("transform", "rotate(-90)")
+           .attr("x", -height / 2)
+           .attr("y", padding - 40)
+           .attr("text-anchor", "middle")
+           .attr("font-size", "14px")
+           .text("Y Scale");
+
+        // Create Groups for Different Elements
         const edgeGroup = svg.append("g");
         const pointGroup = svg.append("g");
         const labelGroup = svg.append("g");
+        const distanceGroup = svg.append("g"); // Group for distance line and label
+        const selectionGroup = svg.append("g"); // Group for selection lines and labels
 
         // Create Legend
         const legend = svg.append("g")
                           .attr("class", "legend")
-                          .attr("transform", `translate(${width - 150}, ${20})`)
+                          .attr("transform", `translate(${width - 200}, ${20})`)
                           .style("display", "none");
 
         legend.append("line")
@@ -140,6 +235,15 @@
         legend.append("text")
               .attr("x", 25).attr("y", 65)
               .text("TSP Edge");
+
+        // Create Cumulative Cost Display
+        const cumulativeCostDisplay = svg.append("text")
+                                         .attr("class", "distance-display")
+                                         .attr("x", 77)
+                                         .attr("y", height - padding + 40)
+                                         .attr("text-anchor", "middle")
+                                         .attr("dominant-baseline", "text-before-edge")
+                                         .text("Cumulative Cost: 0.000");
 
         // Utility Functions
         function generateRandomPoints(n, minDist, maxAttempts) {
@@ -255,7 +359,17 @@
             edgeGroup.selectAll("*").remove();
             pointGroup.selectAll("*").remove();
             labelGroup.selectAll("*").remove();
+            distanceGroup.selectAll("*").remove(); // Remove distance line and label
+            selectionGroup.selectAll("*").remove(); // Remove selection lines and labels
+            distanceLine = null;
+            distanceLabel = null;
+            selectionLines = [];
+            selectionLabels = [];
+            cumulativeCost = 0;
+            cumulativeCostDisplay.text("Cumulative Cost: 0.000");
             legend.style("display", "none");
+            selectedPoints = [];
+            resetPointStyles();
 
             // Generate Points
             try {
@@ -283,21 +397,22 @@
             tour = createTourPath(preorderOrder);
 
             // Draw Points
-            pointGroup.selectAll("circle")
+            const circles = pointGroup.selectAll("circle")
                       .data(points)
                       .enter()
                       .append("circle")
                       .attr("class", "point")
-                      .attr("cx", d => scaleX(d[0]))
-                      .attr("cy", d => scaleY(d[1]))
-                      .attr("r", 8);
+                      .attr("cx", d => xScale(d[0]))
+                      .attr("cy", d => yScale(d[1]))
+                      .attr("r", 8)
+                      .on("click", handlePointClick); // Attach click handler
 
             // Add Labels
             points.forEach((p, i) => {
                 let label = labelGroup.append("text")
                                        .attr("class", "label")
-                                       .attr("x", scaleX(p[0]) + 10)
-                                       .attr("y", scaleY(p[1]) - 10)
+                                       .attr("x", xScale(p[0]) + 10)
+                                       .attr("y", yScale(p[1]) - 10)
                                        .text(` ${i}`);
                 labels.push(label);
             });
@@ -306,18 +421,10 @@
             d3.select("#addMST").property("disabled", false).style("background-color", "");
             d3.select("#addTSP").property("disabled", false).style("background-color", "");
             d3.select("#reset").property("disabled", false);
+            d3.select("#resetSelection").property("disabled", false).style("background-color", "");
 
             // Remove Legend
             legend.style("display", "none");
-        }
-
-        // Scaling Functions
-        function scaleX(x) {
-            return padding + x * (width - 2 * padding);
-        }
-
-        function scaleY(y) {
-            return padding + y * (height - 2 * padding);
         }
 
         // Button Callbacks
@@ -330,10 +437,10 @@
             // Draw considered edge
             const line = edgeGroup.append("line")
                                    .attr("class", "considered-edge")
-                                   .attr("x1", scaleX(points[u][0]))
-                                   .attr("y1", scaleY(points[u][1]))
-                                   .attr("x2", scaleX(points[v][0]))
-                                   .attr("y2", scaleY(points[v][1]))
+                                   .attr("x1", xScale(points[u][0]))
+                                   .attr("y1", yScale(points[u][1]))
+                                   .attr("x2", xScale(points[v][0]))
+                                   .attr("y2", yScale(points[v][1]))
                                    .attr("stroke", "orange")
                                    .attr("stroke-dasharray", "5,5")
                                    .attr("stroke-width", 2);
@@ -345,10 +452,10 @@
                 consideredEdges.pop();
                 const mstLine = edgeGroup.append("line")
                                           .attr("class", "mst-edge")
-                                          .attr("x1", scaleX(points[u][0]))
-                                          .attr("y1", scaleY(points[u][1]))
-                                          .attr("x2", scaleX(points[v][0]))
-                                          .attr("y2", scaleY(points[v][1]))
+                                          .attr("x1", xScale(points[u][0]))
+                                          .attr("y1", yScale(points[u][1]))
+                                          .attr("x2", xScale(points[v][0]))
+                                          .attr("y2", yScale(points[v][1]))
                                           .attr("stroke", "gray")
                                           .attr("stroke-width", 2);
                 mstLines.push(mstLine);
@@ -371,10 +478,10 @@
 
             const tspLine = edgeGroup.append("line")
                                       .attr("class", "tsp-edge")
-                                      .attr("x1", scaleX(points[u][0]))
-                                      .attr("y1", scaleY(points[u][1]))
-                                      .attr("x2", scaleX(points[v][0]))
-                                      .attr("y2", scaleY(points[v][1]))
+                                      .attr("x1", xScale(points[u][0]))
+                                      .attr("y1", yScale(points[u][1]))
+                                      .attr("x2", xScale(points[v][0]))
+                                      .attr("y2", yScale(points[v][1]))
                                       .attr("stroke", "blue")
                                       .attr("stroke-width", 2);
             tspLines.push(tspLine);
@@ -392,6 +499,20 @@
             initialize();
         }
 
+        function resetSelection() {
+            // Clear selected points
+            selectedPoints = [];
+            // Remove selection lines and labels
+            selectionGroup.selectAll("*").remove();
+            selectionLines = [];
+            selectionLabels = [];
+            // Reset cumulative cost
+            cumulativeCost = 0;
+            cumulativeCostDisplay.text("Cumulative Cost: 0.000");
+            // Reset point styles
+            resetPointStyles();
+        }
+
         function showLegend() {
             if (!legendAdded) {
                 legend.style("display", "block");
@@ -399,10 +520,128 @@
             }
         }
 
+        // New Function to Handle Point Clicks
+        function handlePointClick(event, d) {
+            const index = points.indexOf(d);
+            const isSelected = selectedPoints.includes(index);
+
+            if (isSelected) {
+                // Deselect the point
+                const pointPosition = selectedPoints.indexOf(index);
+                selectedPoints.splice(pointPosition, 1);
+                d3.select(this).classed("selected", false);
+
+                // Remove associated lines and labels
+                if (selectionLines.length > 0) {
+                    selectionGroup.selectAll("line").remove();
+                    selectionGroup.selectAll("text").remove();
+                    selectionLines = [];
+                    selectionLabels = [];
+                }
+
+                // Recalculate cumulative cost
+                cumulativeCost = 0;
+                for (let i = 0; i < selectedPoints.length -1; i++) {
+                    const u = selectedPoints[i];
+                    const v = selectedPoints[i +1];
+                    cumulativeCost += distMatrix[u][v];
+                    drawSelectionLine(u, v, i);
+                }
+                cumulativeCostDisplay.text(`Cumulative Cost: ${cumulativeCost.toFixed(3)}`);
+            } else {
+                // Select the point
+                selectedPoints.push(index);
+                d3.select(this).classed("selected", true);
+
+                // Draw line from the previous point to the new point
+                if (selectedPoints.length > 1) {
+                    const u = selectedPoints[selectedPoints.length -2];
+                    const v = selectedPoints[selectedPoints.length -1];
+                    const distance = distMatrix[u][v];
+                    cumulativeCost += distance;
+                    cumulativeCostDisplay.text(`Cumulative Cost: ${cumulativeCost.toFixed(3)}`);
+
+                    drawSelectionLine(u, v, selectedPoints.length -2);
+                }
+            }
+
+            // Remove existing distance line and label (from previous two-point selection)
+            if (distanceLine) {
+                distanceLine.remove();
+                distanceLine = null;
+            }
+            if (distanceLabel) {
+                distanceLabel.remove();
+                distanceLabel = null;
+            }
+
+            // If exactly two points are selected, display their distance
+            if (selectedPoints.length === 2) {
+                const [i, j] = selectedPoints;
+                const distance = distMatrix[i][j];
+
+                // Draw a line between the two points
+                distanceLine = distanceGroup.append("line")
+                                            .attr("class", "distance-line")
+                                            .attr("x1", xScale(points[i][0]))
+                                            .attr("y1", yScale(points[i][1]))
+                                            .attr("x2", xScale(points[j][0]))
+                                            .attr("y2", yScale(points[j][1]))
+                                            .attr("stroke", "green")
+                                            .attr("stroke-width", 2)
+                                            .attr("stroke-dasharray", "4,2");
+
+                // Calculate midpoint for the label
+                const midX = (xScale(points[i][0]) + xScale(points[j][0])) / 2;
+                const midY = (yScale(points[i][1]) + yScale(points[j][1])) / 2;
+
+                // Add distance label near the midpoint
+                distanceLabel = distanceGroup.append("text")
+                                              .attr("class", "distance-label")
+                                              .attr("x", midX + 5) // Slight offset for better visibility
+                                              .attr("y", midY - 5)
+                                              .text(distance.toFixed(3));
+            }
+        }
+
+        // Function to Draw Selection Lines and Labels
+        function drawSelectionLine(u, v, index) {
+            // Draw a line between point u and v
+            const line = selectionGroup.append("line")
+                                        .attr("class", "selection-line")
+                                        .attr("x1", xScale(points[u][0]))
+                                        .attr("y1", yScale(points[u][1]))
+                                        .attr("x2", xScale(points[v][0]))
+                                        .attr("y2", yScale(points[v][1]))
+                                        .attr("stroke", "purple")
+                                        .attr("stroke-width", 2)
+                                        .attr("stroke-dasharray", "2,2");
+            selectionLines.push(line);
+
+            // Calculate midpoint for the label
+            const midX = (xScale(points[u][0]) + xScale(points[v][0])) / 2;
+            const midY = (yScale(points[u][1]) + yScale(points[v][1])) / 2;
+
+            // Add distance label near the midpoint
+            const label = selectionGroup.append("text")
+                                         .attr("class", "selection-label")
+                                         .attr("x", midX + 5) // Slight offset for better visibility
+                                         .attr("y", midY - 5)
+                                         .text(distMatrix[u][v].toFixed(3));
+            selectionLabels.push(label);
+        }
+
+        // Function to Reset Point Styles (e.g., remove 'selected' class)
+        function resetPointStyles() {
+            pointGroup.selectAll("circle")
+                      .classed("selected", false);
+        }
+
         // Attach Button Event Listeners
         d3.select("#addMST").on("click", addMSTEdge);
         d3.select("#addTSP").on("click", addTSPEdge);
         d3.select("#reset").on("click", resetVisualization);
+        d3.select("#resetSelection").on("click", resetSelection); // Attach new button
 
         // Initial Setup
         initialize();
